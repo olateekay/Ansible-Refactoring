@@ -30,9 +30,9 @@ This project will be triggered by completion of your existing ansible project. C
 If both Jenkins jobs have completed one after another - you shall see your files inside `/home/ubuntu/ansible-config-artifact` directory and it will be updated with every commit to your master branch.
 
 
-![alt text](image1.jpg)
+![alt text](https://github.com/olateekay/Ansible-Refactoring/blob/main/images/image1.JPG)
 
-![alt text](image2.jpg)
+![alt text](https://github.com/olateekay/Ansible-Refactoring/blob/main/images/image2.JPG)
 
 ```
 
@@ -374,10 +374,10 @@ uat-2                      : ok=8    changed=6    unreachable=0    failed=0    s
 
 You should be able to see both of your UAT Web servers configured and you can try to reach them from your browser:
 
-![alt text](image3.jpg)
+![alt text](https://github.com/olateekay/Ansible-Refactoring/blob/main/images/image3.JPG)
 
 Your Ansible architecture now looks like this:
 
 
 
-![alt text](image4.jpg)
+![alt text](https://github.com/olateekay/Ansible-Refactoring/blob/main/images/image4.JPG)
