@@ -162,3 +162,222 @@ PLAY RECAP *********************************************************************
 
 
 ```
+
+
+## Step 3 - Configure UAT Webservers with a role ‘Webserver’
+
+We have our nice and clean `dev` environment, so let us put it aside and configure 2 new Web Servers as `uat`. We could write tasks to configure Web Servers in the same playbook, but it would be too messy, instead, we will use a dedicated role to make our configuration reusable.
+
+1.Launch 2 fresh EC2 instances using RHEL 8 image, we will use them as our uat servers, so give them names accordingly  `Web1-UAT` and `Web2-UAT`.
+
+2.To create a role, you must create a directory called `roles/`, relative to the playbook file or in `/etc/ansible/ directory`
+
+There are two ways how you can create this folder structure:
+
+Use an Ansible utility called `ansible-galaxy` inside `ansible-config-mgt/roles` directory (you need to create roles directory upfront)
+
+```
+mkdir roles
+cd roles
+ansible-galaxy init webserver
+
+```
+
+Note: You can choose either way, but since you store all your codes in GitHub, it is recommended to create folders and files there rather than locally on `Jenkins-Ansible` server.
+
+The entire folder structure should look like below, but if you create it manually - you can skip creating `tests`, `files`, and `vars` or remove them if you used `ansible-galaxy`
+
+```
+
+└── webserver
+    ├── README.md
+    ├── defaults
+    │   └── main.yml
+    ├── files
+    ├── handlers
+    │   └── main.yml
+    ├── meta
+    │   └── main.yml
+    ├── tasks
+    │   └── main.yml
+    ├── templates
+    ├── tests
+    │   ├── inventory
+    │   └── test.yml
+    └── vars
+        └── main.yml
+
+```
+
+
+After removing unnecessary directories and files, the roles structure should look like this:
+
+```
+└── webserver
+    ├── README.md
+    ├── defaults
+    │   └── main.yml
+    ├── handlers
+    │   └── main.yml
+    ├── meta
+    │   └── main.yml
+    ├── tasks
+    │   └── main.yml
+    └── templates
+
+```
+
+Update your inventory `ansible-config-mgt/inventory/uat.yml` file with IP addresses of your 2 UAT Web servers:
+
+```
+[uat_webservers]
+uat-1 ansible_host=<Web1-UAT-Server-Private-IP-Address> ansible_ssh_user='ec2-user'
+uat-2 ansible_host=<Web1-UAT-Server-Private-IP-Address> ansible_ssh_user='ec2-user'
+
+```
+
+Run a ping, to see if everything is wired correctly
+
+`$ ansible all -i /home/ubuntu/ansible-artifact/inventory/uat -m ping`
+
+
+```
+Output
+
+uat-2 | SUCCESS => {
+    "ansible_facts": {
+        "discovered_interpreter_python": "/usr/libexec/platform-python"
+    },
+    "changed": false,
+    "ping": "pong"
+}
+uat-1 | SUCCESS => {
+    "ansible_facts": {
+        "discovered_interpreter_python": "/usr/libexec/platform-python"
+    },
+    "changed": false,
+    "ping": "pong"
+}
+
+```
+
+In `/etc/ansible/ansible.cfg` file uncomment roles_path string and provide a full path to your roles directory roles_path = `/home/ubuntu/ansible-config-mgt/roles`, so Ansible could know where to find configured roles.
+
+It is time to start adding some logic to the webserver role. Go into tasks directory, and within the main.yml file, start writing configuration tasks to do the following:
+
+- Install and configure Apache (httpd service)
+- Clone Tooling website from GitHub https://github.com//tooling.git.
+- Ensure the tooling website code is deployed to /var/www/html on each of 2 UAT Web  servers.
+- Make sure httpd service is started
+
+```
+---
+- name: install apache
+  become: true
+  ansible.builtin.yum:
+    name: "httpd"
+    state: present
+
+- name: install git
+  become: true
+  ansible.builtin.yum:
+    name: "git"
+    state: present
+
+- name: clone a repo
+  become: true
+  ansible.builtin.git:
+    repo: https://github.com/<your-name>/tooling.git
+    dest: /var/www/html
+    force: yes
+
+- name: copy html content to one level up
+  become: true
+  command: cp -r /var/www/html/html/ /var/www/
+
+- name: Start service httpd, if not started
+  become: true
+  ansible.builtin.service:
+    name: httpd
+    state: started
+
+- name: recursively remove /var/www/html/html/ directory
+  become: true
+  ansible.builtin.file:
+    path: /var/www/html/html
+    state: absent
+
+```
+
+## Step 4 - Reference ‘Webserver’ role
+
+Within the `static-assignments` folder, create a new assignment for `uat-webservers` `uat-webservers.yml`. This is where you will reference the role.
+
+```
+---
+- hosts: uat-webservers
+  roles:
+     - webserver
+
+```
+
+Remember that the entry point to our ansible configuration is the `site.yml` file. Therefore, we need to refer your `uat-webservers.yml` role inside `site.yml`.
+
+So, we should have this in `site.yml`
+
+```
+---
+- hosts: all
+- import_playbook: ../static-assignments/common.yml
+
+- hosts: uat-webservers
+- import_playbook: ../static-assignments/uat-webservers.yml
+
+```
+
+## Step 5 - Commit & Test
+
+Commit your changes, create a Pull Request and merge them to master branch. Ensure the webhook triggers two consequent Jenkins jobs, they ran successfully and copied all the files to your `Jenkins-Ansible `server into `/home/ubuntu/ansible-artifact/ directory.`
+Now run the playbook against your `uat` inventory and see what happens:
+
+`ansible-playbook -i /home/ubuntu/ansible-artifact/inventory/uat /home/ubuntu/ansible-artifact/playbooks/site.yml`
+
+
+```
+PLAY [uat_webservers] *********************************************************************************************************************************************************
+TASK [Gathering Facts] ********************************************************************************************************************************************************
+ok: [uat-2]
+ok: [uat-1]
+TASK [webserver : install apache] *********************************************************************************************************************************************
+changed: [uat-1]
+changed: [uat-2]
+TASK [webserver : install git] ************************************************************************************************************************************************
+changed: [uat-2]
+changed: [uat-1]
+TASK [webserver : clone a repo] ***********************************************************************************************************************************************
+changed: [uat-2]
+changed: [uat-1]
+TASK [webserver : copy html content to one level up] **************************************************************************************************************************
+changed: [uat-2]
+changed: [uat-1]
+TASK [webserver : Start service httpd, if not started] ************************************************************************************************************************
+changed: [uat-2]
+changed: [uat-1]
+TASK [webserver : recursively remove /var/www/html/html/ directory] ***********************************************************************************************************
+changed: [uat-2]
+changed: [uat-1]
+PLAY RECAP ********************************************************************************************************************************************************************
+uat-1                      : ok=8    changed=6    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0   
+uat-2                      : ok=8    changed=6    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0   
+
+```
+
+You should be able to see both of your UAT Web servers configured and you can try to reach them from your browser:
+
+![alt text](image3.jpg)
+
+Your Ansible architecture now looks like this:
+
+
+
+![alt text](image4.jpg)
